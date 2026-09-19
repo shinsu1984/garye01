@@ -571,9 +571,26 @@ async function syncMyScore(){
   const quiz=sumQuizScore(), challengeScore=sumPhotoScore(), stampPts=stampTotalPoints();
   const jpPts = jpLearnedCount() * 5; // 일본어 5점 합산
   const uploadPts = photoUploadScore(); // 사진 업로드 2점씩
-  const photoScore = challengeScore + uploadPts; // 포토랭킹은 포토챌린지+업로드 합산
-  const total = quiz + photoScore + stampPts + jpPts;
-  await submitRanking(name, {name, quizScore:quiz, photoScore, stampScore:stampPts, jpScore:jpPts, uploadScore:uploadPts, totalScore:total, updatedAt:Date.now()});
+  let photoScore = challengeScore + uploadPts; // 포토랭킹은 포토챌린지+업로드 합산
+  let data = {quizScore:quiz, photoScore, stampScore:stampPts, jpScore:jpPts, uploadScore:uploadPts};
+  /* 다른 기기(예: 새 홈 화면 아이콘)는 이 기기의 진행 상황을 전혀 모르는 "빈 상태"로 시작해요.
+     그 상태로 그냥 덮어쓰면 이미 클라우드에 쌓여 있던 점수가 0으로 리셋될 수 있어서,
+     기존 클라우드 점수보다 낮은 항목은 절대 깎이지 않도록 기존 값과 비교해 더 큰 쪽만 저장해요. */
+  if(firebaseReady){
+    try{
+      const snap = await db.collection('rankings').doc(sanitizeId(name)).get();
+      if(snap.exists){
+        const prev = snap.data() || {};
+        data.quizScore = Math.max(data.quizScore, prev.quizScore||0);
+        data.stampScore = Math.max(data.stampScore, prev.stampScore||0);
+        data.jpScore = Math.max(data.jpScore, prev.jpScore||0);
+        data.uploadScore = Math.max(data.uploadScore, prev.uploadScore||0);
+        data.photoScore = Math.max(data.photoScore, prev.photoScore||0, data.uploadScore);
+      }
+    }catch(e){ warnFirestoreOnce(e); }
+  }
+  data.totalScore = data.quizScore + data.photoScore + data.stampScore + data.jpScore;
+  await submitRanking(name, {name, ...data, updatedAt:Date.now()});
 }
 
 /* =========================================================================
